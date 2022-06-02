@@ -1,6 +1,6 @@
 [package]
 name = "foof"
-description = "Dioxygen difluoride: *another* quick file executor."
+description = "Fluoroperoxide: *another* quick file executor."
 authors = ["Luna (lostkagamine)"]
 version = "0.1.0"
 edition = "2021"
