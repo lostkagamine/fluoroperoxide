@@ -178,7 +178,10 @@ async fn main() {
         for i in &prj.dependencies {
             let ver = match &i.version {
                 crates::CrateVersion::Latest =>
-                    cache.as_ref().unwrap().versions.get(&i.name).unwrap().clone(),
+                    match cache.as_ref().unwrap().versions.get(&i.name) {
+                        Some(x) => x.clone(),
+                        None => i.get_latest_version().await
+                    }
                 crates::CrateVersion::Specific(x) => x.to_string(),
             };
             vers.insert(i.name.clone(), ver);
