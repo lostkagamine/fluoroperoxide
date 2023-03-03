@@ -214,10 +214,7 @@ async fn main() {
             }
             toml.dependencies.insert(i.name.clone(), CargoTomlDependencyObj {
                 version: ver,
-                features: i.features.iter().map(|x| match x {
-                    crates::Feature::Enable(x) => x.clone(),
-                    crates::Feature::Disable(_) => todo!(),
-                }).collect::<Vec<String>>()
+                features: i.features.iter().map(|x| x.clone()).collect::<Vec<String>>()
             });
         }
 

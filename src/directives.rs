@@ -1,4 +1,4 @@
-use crate::crates::{CrateVersion, Feature};
+use crate::crates::{CrateVersion};
 
 #[derive(Clone, Debug, Serialize)]
 pub enum RustEdition {
@@ -55,7 +55,7 @@ impl TryFrom<&str> for RustEdition {
 pub struct Dependency {
     pub name: String,
     pub version: CrateVersion,
-    pub features: Vec<Feature>,
+    pub features: Vec<String>,
 }
 
 impl Dependency {

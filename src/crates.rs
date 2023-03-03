@@ -4,12 +4,6 @@ pub enum CrateVersion {
     Specific(semver::Version)
 }
 
-#[derive(Clone, Debug)]
-pub enum Feature {
-    Enable(String), // just `feature`
-    Disable(String), // `!feature` disables it
-}
-
 // Crates.io API
 #[derive(Deserialize)]
 struct CratesApiCrate {

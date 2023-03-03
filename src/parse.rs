@@ -1,6 +1,6 @@
 use chumsky::{prelude::*, error::Simple};
 
-use crate::{directives::{Directive, Dependency, RustEdition, OptimisationType}, crates::{CrateVersion, Feature}};
+use crate::{directives::{Directive, Dependency, RustEdition, OptimisationType}, crates::{CrateVersion}};
 
 fn semver() -> impl Parser<char, semver::Version, Error=Simple<char>> {
     filter(|x: &char| x.is_alphanumeric() || x == &'-' || x == &'_' || x == &'+' || x == &'.')
@@ -30,10 +30,7 @@ pub fn directive() -> impl Parser<char, Directive, Error=Simple<char>> {
             semver().map(CrateVersion::Specific)
         ));
 
-        let feature = choice((
-            just('!').ignore_then(name).map(Feature::Disable),
-            name.map(Feature::Enable)
-        ));
+        let feature = name;
 
         let crate_spec = name.padded()
             .then(crate_version.padded())
@@ -46,7 +43,7 @@ pub fn directive() -> impl Parser<char, Directive, Error=Simple<char>> {
                 )
                 .or_not()
             )
-            .map(|((crt, ver), feats): ((_, _), Option<Vec<Feature>>)| {
+            .map(|((crt, ver), feats): ((_, _), Option<Vec<String>>)| {
                 Dependency {
                     name: crt,
                     version: ver,
