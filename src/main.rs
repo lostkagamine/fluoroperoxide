@@ -173,14 +173,14 @@ async fn main() {
             cache.as_ref().unwrap().file_hash != src_hash
     };
 
-    if needs_build {
-        const HOUR: u64 = 3600;
-        let use_cache = if has_cache {
-            cache.as_ref().unwrap().time.elapsed().unwrap() < std::time::Duration::from_secs(HOUR)
-        } else {
-            false
-        };
+    const HOUR: u64 = 3600;
+    let use_cache = if has_cache {
+        cache.as_ref().unwrap().time.elapsed().unwrap() < std::time::Duration::from_secs(HOUR)
+    } else {
+        false
+    };
 
+    if needs_build {
         let mut vers = HashMap::new();
         if !use_cache {
             for i in &prj.dependencies {
@@ -275,20 +275,29 @@ async fn main() {
         if !cargo_b_status.success() {
             return;
         }
+    }
 
-        if !use_cache {
-            // Flush the cache
-            let mut new_cache = VersionCache {
-                file_hash: src_hash,
-                time: std::time::SystemTime::now(),
-                versions: HashMap::new(),
-            };
-            for (dep, obj) in &toml.dependencies {
-                new_cache.versions.insert(dep.clone(), obj.version.clone());
-            }
-            let cache_flush = toml::to_string_pretty(&new_cache).unwrap();
-            std::fs::write(cache_file, cache_flush).unwrap();
+    if !use_cache {
+        // Flush the cache
+        let mut new_cache = VersionCache {
+            file_hash: src_hash,
+            time: std::time::SystemTime::now(),
+            versions: HashMap::new(),
+        };
+        for (dep, obj) in &toml.dependencies {
+            new_cache.versions.insert(dep.clone(), obj.version.clone());
         }
+        let cache_flush = toml::to_string_pretty(&new_cache).unwrap();
+        std::fs::write(cache_file, cache_flush).unwrap();
+    } else {
+        // Flush the cache anyway to update the file hash
+        let new_cache = VersionCache {
+            file_hash: src_hash,
+            time: cache.as_ref().unwrap().time,
+            versions: cache.as_ref().unwrap().versions.clone(),
+        };
+        let cache_flush = toml::to_string_pretty(&new_cache).unwrap();
+        std::fs::write(cache_file, cache_flush).unwrap();
     }
 
     // cargo b is done
