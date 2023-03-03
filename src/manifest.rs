@@ -24,3 +24,13 @@ pub struct CargoToml {
     pub package: CargoTomlPackage,
     pub dependencies: HashMap<String, CargoTomlDependencyObj>,
 }
+
+#[derive(Serialize)]
+pub struct RustToolchainToml {
+    pub toolchain: RustToolchainToolchainObj
+}
+
+#[derive(Serialize)]
+pub struct RustToolchainToolchainObj {
+    pub channel: String,
+}

@@ -10,6 +10,7 @@ pub mod shell;
 use std::{path::PathBuf, collections::HashMap, process::Stdio};
 use clap::{Parser};
 use directives::{Directive, Dependency, RustEdition, OptimisationType};
+use manifest::{RustToolchainToml, RustToolchainToolchainObj};
 
 use crate::manifest::{CargoToml, CargoTomlPackage, CargoTomlDependencyObj};
 
@@ -215,7 +216,16 @@ async fn main() {
 
     // Write main.rs
     std::fs::create_dir_all(temp_dir.join("src")).unwrap();
-    std::fs::write(temp_dir.join("src").join("main.rs"), file).unwrap();    
+    std::fs::write(temp_dir.join("src").join("main.rs"), file).unwrap();
+
+    // Emit `rust-toolchain.toml`
+    let toolchain_toml = RustToolchainToml {
+        toolchain: RustToolchainToolchainObj {
+            channel: prj.toolchain.channel
+        }
+    };
+    let toolchain_toml_text = toml::to_string_pretty(&toolchain_toml).unwrap();
+    std::fs::write(temp_dir.join("rust-toolchain.toml"), toolchain_toml_text).unwrap();
 
     // Run `cargo b`
     if !cli.quiet {
@@ -241,7 +251,6 @@ async fn main() {
             .arg("-q");
     }
     
-    cargo_b_command = cargo_b_command.env("RUSTUP_TOOLCHAIN", prj.toolchain.channel);
     cargo_b_command = cargo_b_command.current_dir(&temp_dir);
 
     let cargo_b_status = cargo_b_command
@@ -293,7 +302,7 @@ async fn main() {
                 name
             ));
         }
-        
+
         let mut run_cmd = std::process::Command::new(exe_path);
         let run_cmd = run_cmd
             .current_dir(std::env::current_dir().unwrap())
