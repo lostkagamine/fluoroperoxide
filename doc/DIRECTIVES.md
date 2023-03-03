@@ -48,6 +48,8 @@ Syntax: `toolchain TOOLCHAIN_NAME [targeting TARGET_NAME]`.
 
 `foof` will generate a `rust-toolchain.toml` file while constructing the `cargo` project it internally uses.
 
+**If `targeting` is specified, the executable will not be run.**
+
 ## `optimize`
 The `optimize` directive specifies whether to build the executable in debug or release mode.
 
