@@ -8,7 +8,7 @@ pub mod manifest;
 pub mod hash;
 pub mod shell;
 use std::{path::PathBuf, collections::HashMap, process::Stdio};
-use clap::Parser;
+use clap::{Parser};
 use directives::{Directive, Dependency, RustEdition, OptimisationType};
 
 use crate::manifest::{CargoToml, CargoTomlPackage, CargoTomlDependencyObj};
@@ -27,6 +27,11 @@ pub struct VersionCache {
 #[derive(clap::Parser)]
 struct Cli {
     pub file: PathBuf,
+
+    #[clap(short='q',
+           long="--quiet",
+           help="Suppresses output. Also enables rustc -q.")]
+    pub quiet: bool,
 }
 
 #[derive(Debug)]
@@ -190,7 +195,9 @@ async fn main() {
 
     for i in &prj.dependencies {
         let ver = vers.get(&i.name).unwrap().clone();
-        log.message("Resolving", &format!("{}: {}", i.name, ver));
+        if !cli.quiet {
+            log.message("Resolving", &format!("{}: {}", i.name, ver));
+        }
         toml.dependencies.insert(i.name.clone(), CargoTomlDependencyObj {
             version: ver,
             features: i.features.iter().map(|x| match x {
@@ -208,15 +215,16 @@ async fn main() {
 
     // Write main.rs
     std::fs::create_dir_all(temp_dir.join("src")).unwrap();
-    std::fs::write(temp_dir.join("src").join("main.rs"), file).unwrap();
+    std::fs::write(temp_dir.join("src").join("main.rs"), file).unwrap();    
 
     // Run `cargo b`
-    log.message("Building",  &format!("{}", name));
+    if !cli.quiet {
+        log.message("Building",  &format!("{}", name));
+    }
+
     let mut cargo_b_command = std::process::Command::new("cargo");
-    let mut cargo_b_command = cargo_b_command
-        .arg(format!("+{}", prj.toolchain.channel))
-        .arg("build");
-    
+    let mut cargo_b_command = cargo_b_command.arg("build");
+
     if let Some(ref x) = prj.toolchain.target {
         cargo_b_command = cargo_b_command
             .arg("--target")
@@ -227,7 +235,13 @@ async fn main() {
         cargo_b_command = cargo_b_command
             .arg("--release");
     }
+
+    if cli.quiet {
+        cargo_b_command = cargo_b_command
+            .arg("-q");
+    }
     
+    cargo_b_command = cargo_b_command.env("RUSTUP_TOOLCHAIN", prj.toolchain.channel);
     cargo_b_command = cargo_b_command.current_dir(&temp_dir);
 
     let cargo_b_status = cargo_b_command
@@ -265,16 +279,21 @@ async fn main() {
             .extension()
             .map(|x| x.to_string_lossy().to_string())
             .unwrap_or("".into());
+
         // Let's run it
         let exe_path = temp_dir.join("target")
             .join(prj.optimisation.directory())
             .join(&name)
             .with_extension(ext);
-        log.message("Running", &format!(
-            "`target/{}/{}`",
-            prj.optimisation.directory(),
-            name
-        ));
+
+        if !cli.quiet {
+            log.message("Running", &format!(
+                "`target/{}/{}`",
+                prj.optimisation.directory(),
+                name
+            ));
+        }
+        
         let mut run_cmd = std::process::Command::new(exe_path);
         let run_cmd = run_cmd
             .current_dir(std::env::current_dir().unwrap())
