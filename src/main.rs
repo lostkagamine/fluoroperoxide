@@ -21,6 +21,7 @@ use crate::manifest::{CargoToml, CargoTomlPackage, CargoTomlDependencyObj};
 // you're welcome, crates.io team
 #[derive(Serialize, Deserialize)]
 pub struct VersionCache {
+    pub file_hash: String,
     pub time: std::time::SystemTime,
     pub versions: HashMap<String, String>, // crate -> version mapping
 }
@@ -104,7 +105,7 @@ async fn main() {
 
     let name = cli.file.with_extension("").file_name().unwrap().to_string_lossy().to_string();
     let filepath = cli.file.canonicalize().unwrap().to_string_lossy().to_string();
-    let filehash = hash::digest(filepath);
+    let filehash = hash::digest(&filepath);
 
     let mut prj = Project {
         dependencies: vec![],
@@ -156,6 +157,9 @@ async fn main() {
 
     let cache_file = temp_dir.join("foof_lock.toml");
     let has_cache = cache_file.exists();
+
+    let src_hash = hash::digest(&file);
+
     let cache: Option<VersionCache> = if has_cache {
         let a = std::fs::read_to_string(&cache_file).unwrap();
         let t = toml::from_str::<VersionCache>(&a).unwrap();
@@ -164,119 +168,127 @@ async fn main() {
         None
     };
 
-    const HOUR: u64 = 3600;
-    let use_cache = if has_cache {
-        cache.as_ref().unwrap().time.elapsed().unwrap() < std::time::Duration::from_secs(HOUR)
-    } else {
-        false
+    let needs_build = {
+        !has_cache ||
+            cache.as_ref().unwrap().file_hash != src_hash
     };
 
-    let mut vers = HashMap::new();
-    if !use_cache {
-        for i in &prj.dependencies {
-            let ver = match &i.version {
-                crates::CrateVersion::Latest => i.get_latest_version().await,
-                crates::CrateVersion::Specific(x) => x.to_string(),
-            };
-            vers.insert(i.name.clone(), ver);
-        }
-    } else {
-        for i in &prj.dependencies {
-            let ver = match &i.version {
-                crates::CrateVersion::Latest =>
-                    match cache.as_ref().unwrap().versions.get(&i.name) {
-                        Some(x) => x.clone(),
-                        None => i.get_latest_version().await
-                    }
-                crates::CrateVersion::Specific(x) => x.to_string(),
-            };
-            vers.insert(i.name.clone(), ver);
-        }
-    }
-
-    for i in &prj.dependencies {
-        let ver = vers.get(&i.name).unwrap().clone();
-        if !cli.quiet {
-            log.message("Resolving", &format!("{}: {}", i.name, ver));
-        }
-        toml.dependencies.insert(i.name.clone(), CargoTomlDependencyObj {
-            version: ver,
-            features: i.features.iter().map(|x| match x {
-                crates::Feature::Enable(x) => x.clone(),
-                crates::Feature::Disable(_) => todo!(),
-            }).collect::<Vec<String>>()
-        });
-    }
-
-    // Let's write the file(s)
-    let toml_text = toml::to_string_pretty(&toml).unwrap();
-
-    // Write Cargo.toml
-    std::fs::write(temp_dir.join("Cargo.toml"), toml_text).unwrap();
-
-    // Write main.rs
-    std::fs::create_dir_all(temp_dir.join("src")).unwrap();
-    std::fs::write(temp_dir.join("src").join("main.rs"), file).unwrap();
-
-    // Emit `rust-toolchain.toml`
-    let toolchain_toml = RustToolchainToml {
-        toolchain: RustToolchainToolchainObj {
-            channel: prj.toolchain.channel
-        }
-    };
-    let toolchain_toml_text = toml::to_string_pretty(&toolchain_toml).unwrap();
-    std::fs::write(temp_dir.join("rust-toolchain.toml"), toolchain_toml_text).unwrap();
-
-    // Run `cargo b`
-    if !cli.quiet {
-        log.message("Building",  &format!("{}", name));
-    }
-
-    let mut cargo_b_command = std::process::Command::new("cargo");
-    let mut cargo_b_command = cargo_b_command.arg("build");
-
-    if let Some(ref x) = prj.toolchain.target {
-        cargo_b_command = cargo_b_command
-            .arg("--target")
-            .arg(x);
-    }
-
-    if let OptimisationType::Release = prj.optimisation {
-        cargo_b_command = cargo_b_command
-            .arg("--release");
-    }
-
-    if cli.quiet {
-        cargo_b_command = cargo_b_command
-            .arg("-q");
-    }
-    
-    cargo_b_command = cargo_b_command.current_dir(&temp_dir);
-
-    let cargo_b_status = cargo_b_command
-        .stdout(Stdio::inherit())
-        .stdin(Stdio::inherit())
-        .stderr(Stdio::inherit())
-        .spawn()
-        .unwrap()
-        .wait()
-        .unwrap();
-    
-    if !cargo_b_status.success() {
-        return;
-    }
-
-    if !use_cache {
-        // Flush the cache
-        let mut new_cache = VersionCache {
-            time: std::time::SystemTime::now(),
-            versions: HashMap::new(),
+    if needs_build {
+        const HOUR: u64 = 3600;
+        let use_cache = if has_cache {
+            cache.as_ref().unwrap().time.elapsed().unwrap() < std::time::Duration::from_secs(HOUR)
+        } else {
+            false
         };
-        for (dep, obj) in &toml.dependencies {
-            new_cache.versions.insert(dep.clone(), obj.version.clone());
+
+        let mut vers = HashMap::new();
+        if !use_cache {
+            for i in &prj.dependencies {
+                let ver = match &i.version {
+                    crates::CrateVersion::Latest => i.get_latest_version().await,
+                    crates::CrateVersion::Specific(x) => x.to_string(),
+                };
+                vers.insert(i.name.clone(), ver);
+            }
+        } else {
+            for i in &prj.dependencies {
+                let ver = match &i.version {
+                    crates::CrateVersion::Latest =>
+                        match cache.as_ref().unwrap().versions.get(&i.name) {
+                            Some(x) => x.clone(),
+                            None => i.get_latest_version().await
+                        }
+                    crates::CrateVersion::Specific(x) => x.to_string(),
+                };
+                vers.insert(i.name.clone(), ver);
+            }
         }
-        let cache_flush = toml::to_string_pretty(&new_cache).unwrap();
-        std::fs::write(cache_file, cache_flush).unwrap();
+
+        for i in &prj.dependencies {
+            let ver = vers.get(&i.name).unwrap().clone();
+            if !cli.quiet {
+                log.message("Resolving", &format!("{}: {}", i.name, ver));
+            }
+            toml.dependencies.insert(i.name.clone(), CargoTomlDependencyObj {
+                version: ver,
+                features: i.features.iter().map(|x| match x {
+                    crates::Feature::Enable(x) => x.clone(),
+                    crates::Feature::Disable(_) => todo!(),
+                }).collect::<Vec<String>>()
+            });
+        }
+
+        // Let's write the file(s)
+        let toml_text = toml::to_string_pretty(&toml).unwrap();
+
+        // Write Cargo.toml
+        std::fs::write(temp_dir.join("Cargo.toml"), toml_text).unwrap();
+
+        // Write main.rs
+        std::fs::create_dir_all(temp_dir.join("src")).unwrap();
+        std::fs::write(temp_dir.join("src").join("main.rs"), &file).unwrap();
+
+        // Emit `rust-toolchain.toml`
+        let toolchain_toml = RustToolchainToml {
+            toolchain: RustToolchainToolchainObj {
+                channel: prj.toolchain.channel
+            }
+        };
+        let toolchain_toml_text = toml::to_string_pretty(&toolchain_toml).unwrap();
+        std::fs::write(temp_dir.join("rust-toolchain.toml"), toolchain_toml_text).unwrap();
+
+        // Run `cargo b`
+        if !cli.quiet {
+            log.message("Building",  &format!("{}", name));
+        }
+
+        let mut cargo_b_command = std::process::Command::new("cargo");
+        let mut cargo_b_command = cargo_b_command.arg("build");
+
+        if let Some(ref x) = prj.toolchain.target {
+            cargo_b_command = cargo_b_command
+                .arg("--target")
+                .arg(x);
+        }
+
+        if let OptimisationType::Release = prj.optimisation {
+            cargo_b_command = cargo_b_command
+                .arg("--release");
+        }
+
+        if cli.quiet {
+            cargo_b_command = cargo_b_command
+                .arg("-q");
+        }
+        
+        cargo_b_command = cargo_b_command.current_dir(&temp_dir);
+
+        let cargo_b_status = cargo_b_command
+            .stdout(Stdio::inherit())
+            .stdin(Stdio::inherit())
+            .stderr(Stdio::inherit())
+            .spawn()
+            .unwrap()
+            .wait()
+            .unwrap();
+        
+        if !cargo_b_status.success() {
+            return;
+        }
+
+        if !use_cache {
+            // Flush the cache
+            let mut new_cache = VersionCache {
+                file_hash: src_hash,
+                time: std::time::SystemTime::now(),
+                versions: HashMap::new(),
+            };
+            for (dep, obj) in &toml.dependencies {
+                new_cache.versions.insert(dep.clone(), obj.version.clone());
+            }
+            let cache_flush = toml::to_string_pretty(&new_cache).unwrap();
+            std::fs::write(cache_file, cache_flush).unwrap();
+        }
     }
 
     // cargo b is done
