@@ -25,7 +25,7 @@ struct CratesApiResponse {
 pub async fn get_latest_version(crt: &str) -> String {
     let api = reqwest::Client::new().get(
         format!("https://crates.io/api/v1/crates/{}", crt))
-        .header("User-Agent", format!("foof/{} (https://github.com/ry00001/foof)", env!("CARGO_PKG_VERSION")))
+        .header("User-Agent", format!("foof/{} (https://github.com/ry00001/fluoroperoxide)", env!("CARGO_PKG_VERSION")))
         .send().await.unwrap();
     
     let body = api.text().await.unwrap();
