@@ -34,6 +34,9 @@ struct Cli {
            long="--quiet",
            help="Suppresses output. Also enables rustc -q.")]
     pub quiet: bool,
+
+    #[clap(long="--force-recache", help="Forces a recache. Only use when necessary.")]
+    pub force_recache: bool,
 }
 
 #[derive(Debug)]
@@ -174,7 +177,7 @@ async fn main() {
     };
 
     const HOUR: u64 = 3600;
-    let use_cache = if has_cache {
+    let use_cache = if has_cache && !cli.force_recache {
         cache.as_ref().unwrap().time.elapsed().unwrap() < std::time::Duration::from_secs(HOUR)
     } else {
         false
