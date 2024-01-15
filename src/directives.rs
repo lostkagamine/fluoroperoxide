@@ -1,4 +1,4 @@
-use crate::crates::{CrateVersion};
+use crate::crates::CrateVersion;
 
 #[derive(Clone, Debug, Serialize)]
 pub enum RustEdition {

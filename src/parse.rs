@@ -1,6 +1,6 @@
 use chumsky::{prelude::*, error::Simple};
 
-use crate::{directives::{Directive, Dependency, RustEdition, OptimisationType}, crates::{CrateVersion}};
+use crate::{directives::{Directive, Dependency, RustEdition, OptimisationType}, crates::CrateVersion};
 
 fn semver() -> impl Parser<char, semver::Version, Error=Simple<char>> {
     filter(|x: &char| x.is_alphanumeric() || x == &'-' || x == &'_' || x == &'+' || x == &'.')
